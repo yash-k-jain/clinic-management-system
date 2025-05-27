@@ -54,7 +54,7 @@ Clone the project
 Go to the project directory
 
 ```bash
-  cd gym-management-system
+  cd clinic-management-system
 ```
 
 Install dependencies
@@ -69,72 +69,51 @@ Start the server
   npm run dev
 ```
 
-# 🔄 GYM Management System – Workflow
+# 🔄 Clinic Management System – Workflow
 
 This document outlines the step-by-step workflows for the three primary user roles:
-1. Admin
-2. Member
-3. General User
+1. Doctor
+2. Receptionist
 
 ---
 
-## 🧑‍💼 1. Admin Workflow
+## 🧑‍💼 1. Receptionist Workflow
 
 ### 🔐 Login
 - Enters credentials and submits.
 - If valid:
-  - Redirect to Admin Dashboard.
+  - Redirect to Home Page.
   - Log the login event.
 
-### 👥 Add Member
-- Enter details: Name, Contact, Membership Plan, Start Date.
+### 🆕 Register New Patient
+- Input fields: Name, Contact Info, Age.
+- System auto-generates a unique token number.
 - Submit form:
   - Validate input.
   - Save to Firebase.
   - Log creation event.
 
-### 🛠️ Update/Edit Member
-- Search or select member.
-- Click “Edit” to update member info.
+### 📋 View Patient Queue
+- List of patients sorted by token number.
+- Displays basic info (Name, Token, Status).
 - Save changes:
   - Update Firebase record.
   - Log the update action.
 
-### 💊 Add Supplement
-- Enter details: Name, Description, Price, Stock.
-- Submit to add to catalog.
-- Log the addition event.
+### 🧾 Generate Bill
+- Receive doctor’s prescription and consultation charges.
+- Add any extra service fees (if applicable).
+- Generate and store bill in Firebase.
+- Notify patient of charges.
+- Log billing event.
 
-### 🧾 Create Bill
-- Select member and membership plan.
-- Auto-calculate amount due.
-- Submit to generate bill:
-  - Save bill to Firebase.
-  - Notify member.
-  - Log billing action.
-
-### 👓 View Bills
-- View all or filtered by member/date/status.
-- Export as report (PDF/CSV).
-- Log access to billing data.
-
-### 📊 View Report
-- View:
-  - Active vs expired members
-  - Monthly income
-  - Most popular supplements
-- Log report view event.
-
-### 🔔 Send Notification (Expiring Memberships)
-- System fetches members with memberships ending in next 7 days.
-- Admin can send:
-  - Email / In-app notification.
-  - “Your membership ends on [Date]. Renew soon.”
-- Log each notification sent.
+### 📜 Access Patient History
+- Search by patient name or ID.
+- View all past visits, prescriptions, and bills.
 
 ---
 
-## 🧍‍♂️ 2. Member Workflow
+## 👨‍⚕️ 2. Doctor Workflow
 
 ### 🔐 Login
 - Submits email/password.
@@ -142,49 +121,37 @@ This document outlines the step-by-step workflows for the three primary user rol
   - Redirect to Member Dashboard.
   - Log login action.
 
-### 🗂️ View Current Membership
-- Dashboard displays:
-  - Active plan
-  - Start & End Dates
-  - Fee status (paid/pending)
-- Pull data from Firebase.
+### 📥 View Assigned Patients
+- See a list of patients forwarded by the receptionist.
+- Displays token number, name, and symptoms.
 
-### 📜 View Payment & Activity History
-- See:
-  - Past bills
-  - Payment receipts
-  - Notifications received
-- Log history view.
+### 📝 Write Prescription
+- Enter diagnosis and prescribed medication.
+- Submit prescription:
+  - Save to Firebase.
+  - Log prescription creation.
 
----
-
-## 🌐 3. General User Workflow
-
-### 👀 View Supplement Store
-- Browse:
-  - Product names, descriptions, prices
-- No login required.
-
-### 🏠 View Public Website
-- View:
-  - About the Gym
-  - Services
-  - Contact info
-  - Membership plans
-- Open to all visitors.
+### 📚 View Patient History
+- Option to access all previous prescriptions and consultations.
+- Helps in making informed medical decisions.
 
 ---
 
 ## 📌 Notes
-- All user actions (login, create, update, etc.) are logged using Winston.
+- All user actions (login, create, update, etc.) are logged using log-level.
 - Firebase is used for real-time data storage and access.
-- Supplement module is accessible to both admin and general users (view-only for general).
 
+---
 
+## 📦 System Characteristics
+- 🔐 Modular, safe, and secure code
+- 🧪 Easily testable and maintainable
+- 💡 Platform independent (portable)
+- 📝 Logged activities using JS or Python logging
+- ✅ Follows coding standards and design guidelines
+
+---
 
 ## Admin Credentials
 
-Email - admin@gmail.com\
-password - 123456
-
-After login, create the member and can see members POV.
+Login as random clinic and receptionist emails.
