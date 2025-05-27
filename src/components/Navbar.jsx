@@ -11,7 +11,6 @@ const Navbar = ({ user }) => {
   const doctorLinks = [
     { name: "Patients", path: "/patients" },
     { name: "Clinic Profile", path: "/clinic" },
-    { name: "History", path: "/history" },
   ];
 
   const receptionistLinks = [
