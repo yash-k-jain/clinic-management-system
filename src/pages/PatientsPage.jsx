@@ -9,7 +9,7 @@ import NotLoggedIn from "../components/NotLoggedIn";
 import LoadingSpinner from "../components/Loading";
 import moment from "moment"; // Import moment.js
 import Navbar from "../components/Navbar";
-import log from "../..`/logger"; // import your logger utility
+import log from "../../logger"; // import your logger utility
 
 const PatientsPage = () => {
   const { user, loading } = useAuth();

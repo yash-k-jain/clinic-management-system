@@ -147,7 +147,7 @@ This document outlines the step-by-step workflows for the three primary user rol
 - 🔐 Modular, safe, and secure code
 - 🧪 Easily testable and maintainable
 - 💡 Platform independent (portable)
-- 📝 Logged activities using JS or Python logging
+- 📝 Logged activities using JS log-level logging
 - ✅ Follows coding standards and design guidelines
 
 ---
