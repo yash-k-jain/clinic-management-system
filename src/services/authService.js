@@ -10,7 +10,8 @@ export const registerUser = async (
   email,
   name,
   password,
-  role = "receptionist"
+  role = "receptionist",
+  clinicId
 ) => {
   try {
     const userCredential = await createUserWithEmailAndPassword(
@@ -28,7 +29,7 @@ export const registerUser = async (
       name,
       role,
       uid: userCredential.user.uid,
-      clinicId: `clinic_${Date.now()}`,
+      clinicId: clinicId,
       createdAt: serverTimestamp(),
     });
 

@@ -39,7 +39,8 @@ const Register = () => {
         formData.email,
         formData.name,
         formData.password,
-        formData.role
+        formData.role,
+        formData.clinicId
       );
 
       if (response.success) {

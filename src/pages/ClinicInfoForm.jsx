@@ -117,7 +117,7 @@ const ClinicInfoForm = () => {
   };
 
   if (!user || user.role !== "doctor") {
-    return <NotLoggedIn />
+    return <NotLoggedIn />;
   }
 
   return (
@@ -128,6 +128,26 @@ const ClinicInfoForm = () => {
           onSubmit={handleSubmit}
           className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-4xl space-y-6"
         >
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
+            <div>
+              <p className="text-sm text-gray-500">Clinic ID</p>
+              <p className="text-lg font-semibold text-blue-700 tracking-wide">
+                {user.clinicId}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(user.clinicId);
+                log.info("Clinic ID copied to clipboard");
+                alert("Clinic ID copied!");
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm shadow"
+            >
+              Copy
+            </button>
+          </div>
           <h2 className="text-3xl font-bold text-center text-blue-700">
             Clinic Information
           </h2>

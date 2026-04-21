@@ -1,9 +1,7 @@
-import { useContext, useEffect } from "react";
-import { useState } from "react";
-import { createContext } from "react";
+import { useContext, useEffect, useState, createContext } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../services/firebase";
-import { getDoc, doc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 
 const AuthContext = createContext();
 
@@ -12,23 +10,46 @@ const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unSubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+    let unsubscribeUserDoc = null;
 
-        if (userDoc.exists()) {
-          setUser(userDoc.data());
-        } else {
-          setUser(null);
-        }
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        const userRef = doc(db, "users", firebaseUser.uid);
+
+        // 🔥 listen instead of getDoc
+        unsubscribeUserDoc = onSnapshot(
+          userRef,
+          (docSnap) => {
+            if (docSnap.exists()) {
+              setUser({
+                uid: firebaseUser.uid,
+                ...docSnap.data(),
+              });
+            } else {
+              // doc not created yet → WAIT (don't set null)
+              return;
+            }
+
+            setLoading(false);
+          },
+          (error) => {
+            console.error("User snapshot error:", error);
+            setUser(null);
+            setLoading(false);
+          }
+        );
       } else {
         setUser(null);
+        setLoading(false);
       }
     });
 
-    setLoading(false);
-    return () => unSubscribe();
+    return () => {
+      if (unsubscribeUserDoc) unsubscribeUserDoc();
+      unsubscribeAuth();
+    };
   }, []);
+
   return (
     <AuthContext.Provider value={{ user, loading }}>
       {children}
@@ -37,5 +58,4 @@ const AuthProvider = ({ children }) => {
 };
 
 export const useAuth = () => useContext(AuthContext);
-
 export default AuthProvider;
