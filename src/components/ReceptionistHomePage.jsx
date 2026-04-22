@@ -1,23 +1,11 @@
-import React, { useEffect } from "react";
+import React from "react";
 import TokenContainer from "./TokenContainer";
-import log from "../../logger"; // Assume you have this logger utility
 
 const ReceptionistHomePage = ({ currentToken, waitingPatients }) => {
-  useEffect(() => {
-    log.info("ReceptionistHomePage mounted");
-  }, []);
-
-  useEffect(() => {
-    log.info("Current token updated in ReceptionistHomePage");
-  }, [currentToken]);
-
-  useEffect(() => {
-    log.info("Waiting patients updated");
-  }, [waitingPatients]);
-
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
-      {/* Current Token Section */}
+      
+      {/* CURRENT TOKEN */}
       <div className="bg-white shadow-md rounded-lg p-6 mb-8">
         <h2 className="text-2xl font-semibold text-blue-700 mb-4">
           Currently Operating Token
@@ -26,51 +14,42 @@ const ReceptionistHomePage = ({ currentToken, waitingPatients }) => {
         <TokenContainer currentToken={currentToken} />
       </div>
 
-      {/* Operated Patients List */}
+      {/* WAITING LIST */}
       <div className="bg-white shadow-md rounded-lg p-6">
         <h2 className="text-2xl font-semibold text-green-700 mb-4">
           Waiting Patients
         </h2>
-        {waitingPatients?.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full table-auto border-collapse">
-              <thead>
-                <tr className="bg-gray-200 text-left">
-                  <th className="p-3">Token</th>
-                  <th className="p-3">Name</th>
-                  <th className="p-3">Phone</th>
-                  <th className="p-3">DOB</th>
-                  <th className="p-3">Father's Name</th>
-                  <th className="p-3">Address</th>
-                  <th className="p-3">Gender</th>
+
+        {waitingPatients.length > 0 ? (
+          <table className="min-w-full">
+            <thead>
+              <tr className="bg-gray-200">
+                <th className="p-2">Token</th>
+                <th className="p-2">Name</th>
+                <th className="p-2">Phone</th>
+                <th className="p-2">DOB</th>
+                <th className="p-2">Father</th>
+                <th className="p-2">Address</th>
+                <th className="p-2">Gender</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {waitingPatients.map((p) => (
+                <tr key={p.id}>
+                  <td className="p-2">{p.token}</td>
+                  <td className="p-2">{p.name}</td>
+                  <td className="p-2">{p.contactNumber}</td>
+                  <td className="p-2">{p.dob}</td>
+                  <td className="p-2">{p.fatherName}</td>
+                  <td className="p-2">{p.address}</td>
+                  <td className="p-2">{p.gender}</td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {waitingPatients.map((patient, idx) => {
-                  log.debug(`Rendering patient row #${idx}`, {
-                    token: patient.token,
-                    name: patient.name,
-                  });
-                  return (
-                    <tr key={idx}>
-                      <td className="p-3">{patient.token}</td>
-                      <td className="p-3">{patient.name}</td>
-                      <td className="p-3">{patient.contactNumber}</td>
-                      <td className="p-3">{patient.dob}</td>
-                      <td className="p-3">{patient.fatherName}</td>
-                      <td className="p-3">{patient.address}</td>
-                      <td className="p-3">{patient.gender}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         ) : (
-          <>
-            {log.warn("No waiting patients to show")}
-            <p className="text-gray-500">No waiting patients to show.</p>
-          </>
+          <p>No waiting patients</p>
         )}
       </div>
     </div>

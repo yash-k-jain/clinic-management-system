@@ -1,11 +1,12 @@
 import {
   collection,
-  addDoc,
   getDocs,
   query,
   where,
   orderBy,
   limit,
+  updateDoc,
+  doc,
 } from "firebase/firestore";
 import { db } from "../services/firebase";
 
@@ -18,42 +19,41 @@ export const newTokenCreation = async (user) => {
       where("status", "==", "current"),
       limit(1)
     );
+
     const currentTokenSnap = await getDocs(currentTokenQuery);
+
     if (!currentTokenSnap.empty) {
-      return null; // A current token already exists, so do nothing
+      return null; // already a current token
     }
 
-    // 2. Get the first waiting patient (lowest token)
+    // 2. Get next waiting + paid token (lowest number)
     const waitingQuery = query(
-      collection(db, "patients"),
+      collection(db, "tokens"),
       where("clinicId", "==", user.clinicId),
       where("status", "==", "waiting"),
       where("paid", "==", true),
       orderBy("token", "asc"),
       limit(1)
     );
+
     const waitingSnap = await getDocs(waitingQuery);
-    if (waitingSnap.empty) return null;
 
-    const waitingPatientDoc = waitingSnap.docs[0];
-    const waitingPatient = waitingPatientDoc.data();
+    if (waitingSnap.empty) {
+      return null; // no eligible tokens
+    }
 
-    // 3. Create a new token and set it to current
-    const tokenRef = await addDoc(collection(db, "tokens"), {
-      token: waitingPatient.token,
-      patientId: waitingPatientDoc.id,
+    const waitingDoc = waitingSnap.docs[0];
+    const waitingData = waitingDoc.data();
+
+    // 3. Update this token → make it current
+    await updateDoc(doc(db, "tokens", waitingDoc.id), {
       status: "current",
-      clinicId: waitingPatient.clinicId,
-      createdAt: new Date(),
     });
 
     return {
-      id: tokenRef.id,
-      token: waitingPatient.token,
-      patientId: waitingPatientDoc.id,
+      id: waitingDoc.id,
+      ...waitingData,
       status: "current",
-      clinicId: waitingPatient.clinicId,
-      patient: waitingPatient,
     };
   } catch (error) {
     console.error("Error creating new token:", error);

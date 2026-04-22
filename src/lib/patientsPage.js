@@ -11,38 +11,53 @@ import { db } from "../services/firebase";
 
 export const fetchAllPatients = async (clinicId) => {
   try {
-    // Check if clinicId is provided
-    if (!clinicId) {
-      throw new Error("clinicId is required");
-    }
+    if (!clinicId) throw new Error("clinicId is required");
 
-    console.log("Fetching patients for clinicId:", clinicId);
-
-    // Construct Firestore query
-    const q = query(
+    // ✅ Fetch patients
+    const patientQuery = query(
       collection(db, "patients"),
       where("clinicId", "==", clinicId),
-      where("paid", "==", true),
       orderBy("createdAt", "asc")
     );
 
-    // Get documents
-    const snapShot = await getDocs(q);
+    // ✅ Fetch tokens
+    const tokenQuery = query(
+      collection(db, "tokens"),
+      where("clinicId", "==", clinicId)
+    );
 
-    if (snapShot.empty) {
-      throw new Error("No patients found");
-    }
+    const [patientSnap, tokenSnap] = await Promise.all([
+      getDocs(patientQuery),
+      getDocs(tokenQuery),
+    ]);
 
-    // Map over documents and extract data
-    const patientsData = snapShot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    // ✅ Create token map
+    const tokenMap = {};
+    tokenSnap.docs.forEach((docSnap) => {
+      const t = docSnap.data();
+      tokenMap[t.patientId] = {
+        token: t.token,
+        status: t.status,
+      };
+    });
+
+    // ✅ Merge (SIMPLE)
+    const patientsData = patientSnap.docs.map((docSnap) => {
+      const patient = docSnap.data();
+      const token = tokenMap[docSnap.id];
+
+      return {
+        id: docSnap.id,
+        ...patient,
+        token: token?.token || "--",
+        status: token?.status || patient.status || "unknown",
+      };
+    });
 
     return patientsData;
   } catch (error) {
     console.error("Error fetching patients:", error);
-    throw new Error("Failed to fetch patients");
+    throw error;
   }
 };
 

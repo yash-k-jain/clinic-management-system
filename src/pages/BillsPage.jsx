@@ -46,29 +46,36 @@ const BillingPage = () => {
         const enrichedBills = await Promise.all(
           billsSnap.docs.map(async (billDoc) => {
             const billData = billDoc.data();
-            const patientRef = doc(db, "patients", billData.patientId);
+            const tokenRef = doc(db, "tokens", billData.tokenId);
             const clinicRef = doc(db, "clinic", user.clinicId);
+            const patientRef = doc(db, "patients", billData.patientId);
 
             try {
-              const [patientSnap, clinicSnap] = await Promise.all([
-                getDoc(patientRef),
+              const [tokenSnap, clinicSnap, patientSnap] = await Promise.all([
+                getDoc(tokenRef),
                 getDoc(clinicRef),
+                getDoc(patientRef),
               ]);
 
-              const patientData = patientSnap.data();
+              const tokenData = tokenSnap.data();
               const clinicData = clinicSnap.data();
+              const patientData = {
+                id: patientSnap.id,
+                ...patientSnap.data(),
+              };
 
-              log.debug("Fetched patient & clinic data", {
-                patientData,
+              log.debug("Fetched Token & clinic data", {
+                tokenData,
                 clinicData,
               });
 
-              if (patientData?.status === "waiting") {
+              if (tokenData?.status === "waiting") {
                 return {
                   id: billDoc.id,
                   ...billData,
-                  patient: patientData,
+                  tokenData: tokenData,
                   clinic: clinicData,
+                  patient: patientData,
                 };
               }
             } catch (err) {
@@ -111,12 +118,12 @@ const BillingPage = () => {
 
       setBills((prev) => prev.filter((bill) => bill.id !== currentBill.id));
 
-      await updateDoc(doc(db, "patients", currentBill.patientId), {
+      await updateDoc(doc(db, "tokens", currentBill.tokenId), {
         paid: true,
       });
 
       await newTokenCreation(user);
-      log.info("Token created and patient marked as paid.");
+      log.info("Token created and bill marked as paid.");
 
       if (actionType === "print") {
         log.info("Printing bill...");
@@ -256,7 +263,7 @@ const BillingPage = () => {
                       <td className="px-4 py-3 font-medium text-gray-800">
                         {bill.patient?.name}
                       </td>
-                      <td className="px-4 py-3">#{bill.token}</td>
+                      <td className="px-4 py-3">#{bill.tokenData.token}</td>
                       <td className="px-4 py-3">
                         {bill.patient?.contactNumber}
                       </td>

@@ -12,35 +12,59 @@ const ClinicRecords = () => {
   const [allPatients, setAllPatients] = useState([]);
 
   useEffect(() => {
-    const fetchAllPatients = async () => {
-      if (!user) {
-        log.warn("No user found");
-        return;
-      }
+    if (!user) {
+      log.warn("No user found");
+      return;
+    }
 
+    const fetchData = async () => {
       try {
-        const q = query(
-          collection(db, "patients"),
-          where("clinicId", "==", user.clinicId),
-          where("addedBy", "==", user.uid),
-          orderBy("createdAt", "desc")
+        // 1. Patients
+        const patientSnap = await getDocs(
+          query(
+            collection(db, "patients"),
+            where("clinicId", "==", user.clinicId),
+            where("addedBy", "==", user.uid),
+            orderBy("createdAt", "desc")
+          )
         );
 
-        const snapshot = await getDocs(q);
-        const records = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+        // 2. Tokens
+        const tokenSnap = await getDocs(
+          query(
+            collection(db, "tokens"),
+            where("clinicId", "==", user.clinicId)
+          )
+        );
 
-        log.info("Fetched patient records");
+        // 3. Map patientId → token
+        const tokenMap = {};
+        tokenSnap.forEach((doc) => {
+          const t = doc.data();
+          tokenMap[t.patientId] = t;
+        });
 
-        setAllPatients(records);
-      } catch (error) {
-        log.error("Failed to fetch patient records:", error);
+        // 4. Merge
+        const merged = patientSnap.docs.map((doc) => {
+          const patient = doc.data();
+          const token = tokenMap[doc.id];
+
+          return {
+            id: doc.id,
+            ...patient,
+            tokenNumber: token?.token ?? patient.token ?? "--",
+            status: token?.status ?? patient.status ?? "unknown",
+          };
+        });
+
+        setAllPatients(merged);
+        log.info("Records ready with token + status");
+      } catch (err) {
+        log.error("Error fetching records", err);
       }
     };
 
-    fetchAllPatients();
+    fetchData();
   }, [user]);
 
   if (loading) {
@@ -120,7 +144,7 @@ const ClinicRecords = () => {
                                 </div>
                               )}
                             </td>
-                            <td className="p-3">{patient.token}</td>
+                            <td className="p-3">#{patient.tokenNumber}</td>
                             <td className="p-3">{patient.name}</td>
                             <td className="p-3">{patient.contactNumber}</td>
                             <td className="p-3">{patient.dob}</td>

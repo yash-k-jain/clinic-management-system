@@ -45,7 +45,11 @@ const Register = () => {
 
       if (response.success) {
         log.info("Registration successful, navigating to home");
-        navigate("/");
+        if(formData.role === "doctor") {
+          navigate("/clinic");
+        } else {
+          navigate("/add-patient");
+        }
       } else {
         log.warn("Registration failed", { message: response.message });
         setErrors(response.message);

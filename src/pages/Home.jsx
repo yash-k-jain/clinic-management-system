@@ -9,14 +9,14 @@ import {
   query,
   where,
   orderBy,
-  getDocs,
   getDoc,
   doc,
   onSnapshot,
 } from "firebase/firestore";
 import ReceptionistHomePage from "../components/ReceptionistHomePage";
 import DoctorHomePage from "../components/DoctorHomePage";
-import log from "../../logger"; // <-- import logger
+import { newTokenCreation } from "../lib/newTokenCreation";
+import log from "../../logger";
 
 const Home = () => {
   const { user, loading } = useAuth();
@@ -25,80 +25,92 @@ const Home = () => {
   const [waitingPatients, setWaitingPatients] = useState([]);
 
   useEffect(() => {
-    const fetchTokens = async () => {
-      if (!user) {
-        log.warn("No user found in Home component, aborting fetchTokens.");
+    if (!user) return;
+
+    // 🔥 ensure one current token exists
+    newTokenCreation(user);
+
+    // ======================
+    // CURRENT TOKEN
+    // ======================
+    const currentQuery = query(
+      collection(db, "tokens"),
+      where("clinicId", "==", user.clinicId),
+      where("status", "==", "current")
+    );
+
+    const unsubscribeCurrent = onSnapshot(currentQuery, async (snap) => {
+      if (snap.empty) {
+        setCurrentToken(null);
         return;
       }
 
-      try {
-        // Subscribe to CURRENT token changes
-        const tokenQuery = query(
-          collection(db, "tokens"),
-          where("clinicId", "==", user.clinicId),
-          where("status", "==", "current")
-        );
+      const docSnap = snap.docs[0];
+      const data = docSnap.data();
 
-        log.info("Setting up listener for current token");
-        onSnapshot(tokenQuery, async (tokenSnapshot) => {
-          const tokenDoc = tokenSnapshot.docs[0];
-          if (tokenDoc) {
-            const current = tokenDoc.data();
-            const currentTokenPatient = await getDoc(
-              doc(db, "patients", current.patientId)
-            );
-            const currentPatient = currentTokenPatient.data();
+      const patientSnap = await getDoc(
+        doc(db, "patients", data.patientId)
+      );
 
-            const currentToken = {
-              ...current,
-              patient: currentPatient,
-            };
+      setCurrentToken({
+        id: docSnap.id,
+        ...data,
+        patient: {
+          id: patientSnap.id,
+          ...patientSnap.data(),
+        },
+      });
+    });
 
-            log.debug("Current token updated");
-            setCurrentToken(currentToken);
-          } else {
-            log.info("No current token found");
-            setCurrentToken(null);
-          }
-        });
+    // ======================
+    // WAITING PATIENTS
+    // ======================
+    const waitingQuery = query(
+      collection(db, "tokens"),
+      where("clinicId", "==", user.clinicId),
+      where("status", "==", "waiting"),
+      where("paid", "==", true),
+      orderBy("token", "asc")
+    );
 
-        // Subscribe to waiting patients
-        const patientsQuery = query(
-          collection(db, "patients"),
-          where("clinicId", "==", user.clinicId),
-          where("status", "==", "waiting"),
-          where("addedBy", "==", user.uid),
-          where("paid", "==", true),
-          orderBy("createdAt", "desc")
-        );
+    const unsubscribeWaiting = onSnapshot(waitingQuery, async (snap) => {
+      const list = await Promise.all(
+        snap.docs.map(async (docSnap) => {
+          const data = docSnap.data();
 
-        onSnapshot(patientsQuery, (patientSnapshot) => {
-          log.debug("Waiting patients snapshot updated", {
-            count: patientSnapshot.docs.length,
-          });
-          const patients = patientSnapshot.docs.map((doc) => doc.data());
-          setWaitingPatients(patients);
-        });
-      } catch (error) {
-        log.error(
-          "Error fetching tokens or patients in Home component:",
-          error
-        );
-      }
+          const patientSnap = await getDoc(
+            doc(db, "patients", data.patientId)
+          );
+
+          const patient = patientSnap.data();
+
+          return {
+            id: docSnap.id,
+            token: data.token,
+            name: patient?.name || "-",
+            contactNumber: patient?.contactNumber || "-",
+            dob: patient?.dob || "-",
+            fatherName: patient?.fatherName || "-",
+            address: patient?.address || "-",
+            gender: patient?.gender || "-",
+          };
+        })
+      );
+
+      setWaitingPatients(list);
+    });
+
+    return () => {
+      unsubscribeCurrent();
+      unsubscribeWaiting();
     };
-
-    fetchTokens();
   }, [user]);
 
-  if (loading) {
-    log.debug("Auth loading in Home component...");
-    return <LoadingSpinner />;
-  }
-
-  if (!user) {
-    log.warn("User not logged in in Home component.");
-    return <NotLoggedIn />;
-  }
+  // ======================
+  // UI
+  // ======================
+  if (loading) return <LoadingSpinner />;
+  if (!user) return <NotLoggedIn />;
 
   return (
     <>
@@ -110,6 +122,7 @@ const Home = () => {
           waitingPatients={waitingPatients}
         />
       )}
+
       {user.role === "doctor" && <DoctorHomePage user={user} />}
     </>
   );

@@ -1,12 +1,23 @@
-import { collection, query, where, orderBy, limit, getDocs } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  getDocs,
+} from "firebase/firestore";
 import { db } from "../services/firebase";
 
 export const generateToken = async (clinicId) => {
   try {
-    // Get the last added patient for the clinic
+    const today = new Date();
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+
+    // 1. Get latest token for today
     const q = query(
-      collection(db, "patients"),
+      collection(db, "tokens"),
       where("clinicId", "==", clinicId),
+      where("createdAt", ">=", startOfDay),
       orderBy("createdAt", "desc"),
       limit(1)
     );
@@ -14,21 +25,15 @@ export const generateToken = async (clinicId) => {
     const snapshot = await getDocs(q);
 
     if (snapshot.empty) {
-      // No patients yet — first token
-      return 1;
+      return 1; // first token of the day
     }
 
-    const lastPatient = snapshot.docs[0].data();
-    const lastToken = lastPatient.token || 0;
-    const createdAt = lastPatient.createdAt.toDate(); // Convert Firestore Timestamp to JS Date
+    const lastTokenData = snapshot.docs[0].data();
+    const lastToken = lastTokenData.token || 0;
 
-    const today = new Date();
-    const isYesterdayOrBefore = createdAt.toDateString() !== today.toDateString();
-
-    return isYesterdayOrBefore ? 1 : lastToken + 1;
-
+    return lastToken + 1;
   } catch (error) {
     console.error("Error generating token:", error);
-    return 1; // fallback
+    return 1;
   }
 };

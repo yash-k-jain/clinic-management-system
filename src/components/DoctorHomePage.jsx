@@ -11,10 +11,9 @@ import {
 } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { useAuth } from "../context/AuthContext";
-import { newTokenCreation } from "../lib/newTokenCreation";
 import TokenContainer from "./TokenContainer";
-// import getCurrentTokenWithPatient from "../lib/getCurrentTokenWithPatient ";
-import log from "../../logger"; // Assume you have a logger utility
+import { newTokenCreation } from "../lib/newTokenCreation";
+import log from "../../logger";
 
 const DoctorHomePage = () => {
   const { user } = useAuth();
@@ -23,65 +22,56 @@ const DoctorHomePage = () => {
   const [prescriptionSaved, setPrescriptionSaved] = useState(false);
 
   useEffect(() => {
-    if (!user) {
-      log.info("No user logged in, skipping token listener");
-      return;
-    }
+    if (!user) return;
 
-    const tokenQuery = query(
+    const q = query(
       collection(db, "tokens"),
       where("clinicId", "==", user.clinicId),
       where("status", "==", "current")
     );
 
-    const unsubscribe = onSnapshot(tokenQuery, async (tokenSnapshot) => {
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
       try {
-        if (!tokenSnapshot.empty) {
-          const tokenDoc = tokenSnapshot.docs[0];
-          const current = tokenDoc.data();
-          log.info("Current token found");
-
-          const currentTokenPatientSnap = await getDoc(
-            doc(db, "patients", current.patientId)
-          );
-
-          const currentPatient = currentTokenPatientSnap.data();
-          log.info("Current patient data fetched");
-
-          setCurrentToken({
-            id: tokenDoc.id, // Include the document ID
-            ...current,
-            patient: currentPatient,
-          });
-        } else {
-          log.info("No current token found, creating new token");
-          const newTokenData = await newTokenCreation(user);
-          log.info("New token created");
-          setCurrentToken(newTokenData);
+        if (snapshot.empty) {
+          setCurrentToken(null);
+          return;
         }
-      } catch (error) {
-        log.error("Error in token listener", error);
+
+        const tokenDoc = snapshot.docs[0];
+        const tokenData = tokenDoc.data();
+
+        const patientSnap = await getDoc(
+          doc(db, "patients", tokenData.patientId)
+        );
+
+        setCurrentToken({
+          id: tokenDoc.id,
+          ...tokenData,
+          patient: {
+            id: patientSnap.id,
+            ...patientSnap.data(),
+          },
+        });
+      } catch (err) {
+        log.error("Error fetching current token:", err);
       }
     });
 
-    return () => {
-      log.info("Unsubscribing token listener");
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, [user]);
 
+  // =========================
+  // SAVE PRESCRIPTION
+  // =========================
   const handleSavePrescription = async () => {
     if (!prescriptionText.trim()) {
-      log.warn("Attempted to save empty prescription");
-      alert("Please write a prescription before saving.");
+      alert("Write prescription first");
       return;
     }
 
     try {
-      log.info("Saving prescription");
-
       await addDoc(collection(db, "prescriptions"), {
-        patientId: currentToken.patientId || currentToken.patient?.uid,
+        patientId: currentToken.patientId,
         doctorId: user.uid,
         clinicId: user.clinicId,
         token: currentToken.token,
@@ -89,40 +79,39 @@ const DoctorHomePage = () => {
         createdAt: new Date(),
       });
 
-      log.info("Prescription saved successfully");
-      alert("Prescription saved successfully.");
       setPrescriptionSaved(true);
-    } catch (error) {
-      log.error("Error saving prescription", error);
-      alert("Failed to save prescription. Please try again.");
+      alert("Saved");
+    } catch (err) {
+      log.error(err);
+      alert("Error saving");
     }
   };
 
+  // =========================
+  // NEXT TOKEN
+  // =========================
   const handleNextToken = async () => {
-    if (!currentToken) {
-      log.warn("Next token requested but currentToken is null");
-      return;
-    }
+    if (!currentToken) return;
 
     try {
-      log.info("Moving to next token");
-
-      setPrescriptionText("");
-      setPrescriptionSaved(false);
-
+      // mark token done
       await updateDoc(doc(db, "tokens", currentToken.id), {
         status: "done",
       });
 
+      // mark patient done
       await updateDoc(doc(db, "patients", currentToken.patientId), {
         status: "done",
       });
 
-      log.info("Current token and patient marked as done");
-      // The onSnapshot listener will handle new token creation or updates
-    } catch (error) {
-      log.error("Error moving to next token", error);
-      alert("Failed to move to next token. Please try again.");
+      // 🔥 create next token
+      await newTokenCreation(user);
+
+      // reset UI
+      setPrescriptionText("");
+      setPrescriptionSaved(false);
+    } catch (err) {
+      log.error(err);
     }
   };
 
@@ -135,29 +124,23 @@ const DoctorHomePage = () => {
 
         <TokenContainer currentToken={currentToken} />
 
-        {/* Prescription Box */}
         {currentToken && (
           <div className="mt-6">
-            <label className="block font-semibold text-gray-700 mb-1">
-              Prescription
-            </label>
             <textarea
               rows="4"
-              className="w-full border border-gray-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
-              placeholder="Write prescription here..."
+              className="w-full border rounded p-2"
+              placeholder="Write prescription..."
               value={prescriptionText}
               onChange={(e) => {
                 setPrescriptionText(e.target.value);
                 setPrescriptionSaved(false);
-                log.debug("Prescription text changed", {
-                  textLength: e.target.value.length,
-                });
               }}
             />
+
             <button
               onClick={handleSavePrescription}
               disabled={prescriptionSaved}
-              className="mt-3 bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg transition cursor-pointer disabled:bg-gray-400 disabled:cursor-not-allowed"
+              className="mt-3 bg-green-600 text-white px-4 py-2 rounded cursor-pointer"
             >
               Save Prescription
             </button>
@@ -166,12 +149,8 @@ const DoctorHomePage = () => {
 
         <button
           onClick={handleNextToken}
-          disabled={currentToken && !prescriptionSaved}
-          className={`mt-6 font-semibold px-6 py-2 rounded-lg transition cursor-pointer ${
-            currentToken && !prescriptionSaved
-              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-              : "bg-blue-600 hover:bg-blue-700 text-white"
-          }`}
+          disabled={!currentToken || !prescriptionSaved}
+          className="mt-6 bg-blue-600 text-white px-6 py-2 rounded disabled:bg-gray-400 cursor-pointer"
         >
           Next Token
         </button>

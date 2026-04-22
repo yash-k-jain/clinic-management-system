@@ -1,13 +1,22 @@
 import React, { useState, useEffect } from "react";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../context/AuthContext";
-import { addDoc, collection, doc, getDoc } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  where,
+} from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { db } from "../services/firebase";
 import { generateToken } from "../lib/generateToken";
 import Select from "react-select";
 import log from "../../logger";
-import NotLoggedIn from "../components/NotLoggedIn"
+import NotLoggedIn from "../components/NotLoggedIn";
 
 const AddPatientForm = () => {
   const { user } = useAuth();
@@ -21,12 +30,12 @@ const AddPatientForm = () => {
     address: "",
     emergencyContact: "",
     emergencyNumber: "",
-    profilePicture: null,
     fatherName: "",
   });
   const [errors, setErrors] = useState({});
   const [selectedServices, setSelectedServices] = useState([]);
   const [servicesOptions, setServicesOptions] = useState([]);
+  const [patientIdInput, setPatientIdInput] = useState("");
 
   // Fetch clinic services
   useEffect(() => {
@@ -66,10 +75,6 @@ const AddPatientForm = () => {
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleFileChange = (e) => {
-    setFormData({ ...formData, profilePicture: e.target.files[0] });
-  };
-
   const validate = () => {
     const newErrors = {};
     if (!formData.name) newErrors.name = "Please enter a valid name.";
@@ -78,29 +83,6 @@ const AddPatientForm = () => {
       newErrors.contactNumber = "Please enter a contact number.";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  };
-
-  const uploadToCloudinary = async (file) => {
-    const data = new FormData();
-    data.append("file", file);
-    data.append("upload_preset", import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET);
-
-    try {
-      const res = await fetch(
-        `https://api.cloudinary.com/v1_1/${
-          import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
-        }/image/upload`,
-        {
-          method: "POST",
-          body: data,
-        }
-      );
-      const imgData = await res.json();
-      return imgData.secure_url;
-    } catch (err) {
-      log.error("Upload failed", err);
-      return null;
-    }
   };
 
   const handleSubmit = async (e) => {
@@ -113,16 +95,10 @@ const AddPatientForm = () => {
 
     if (!validate()) return;
 
-    let profilePictureUrl = null;
-    if (formData.profilePicture) {
-      profilePictureUrl = await uploadToCloudinary(formData.profilePicture);
-    }
-
     try {
       const tokenNumber = await generateToken(user.clinicId);
 
       const patientRef = await addDoc(collection(db, "patients"), {
-        token: tokenNumber,
         name: formData.name,
         gender: formData.gender,
         dob: formData.dob,
@@ -132,19 +108,26 @@ const AddPatientForm = () => {
         emergencyContact: formData.emergencyContact,
         emergencyNumber: formData.emergencyNumber,
         fatherName: formData.fatherName,
-        profilePicture: profilePictureUrl,
         clinicId: user.clinicId,
         addedBy: user.uid,
         services: selectedServices.map((s) => s.label),
         createdAt: new Date(),
-        status: "waiting",
-        paid: false,
       });
 
       if (selectedServices.length > 0) {
+        const tokenDoc = await addDoc(collection(db, "tokens"), {
+          clinicId: user.clinicId,
+          createdAt: new Date(),
+          patientId: patientRef.id,
+          token: tokenNumber,
+          status: "waiting",
+          paid: false,
+        });
+
         await addDoc(collection(db, "bills"), {
           clinicId: user.clinicId,
           patientId: patientRef.id,
+          tokenId: tokenDoc.id,
           token: tokenNumber,
           status: "unpaid",
           services: servicesMap,
@@ -165,7 +148,6 @@ const AddPatientForm = () => {
         address: "",
         emergencyContact: "",
         emergencyNumber: "",
-        profilePicture: null,
         fatherName: "",
       });
       setSelectedServices([]);
@@ -175,8 +157,71 @@ const AddPatientForm = () => {
     }
   };
 
+  const handleFetchPatient = async () => {
+    if (!patientIdInput) {
+      alert("Enter ID, phone or email");
+      return;
+    }
+
+    try {
+      log.info("Searching patient", { query: patientIdInput });
+
+      let snap;
+
+      // 🔹 Try ID first
+      const docRef = doc(db, "patients", patientIdInput);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        snap = docSnap;
+      } else {
+        // 🔹 Try phone/email search
+        const q = query(
+          collection(db, "patients"),
+          where("contactNumber", "==", patientIdInput)
+        );
+
+        const emailQuery = query(
+          collection(db, "patients"),
+          where("email", "==", patientIdInput)
+        );
+
+        const [phoneSnap, emailSnap] = await Promise.all([
+          getDocs(q),
+          getDocs(emailQuery),
+        ]);
+
+        if (!phoneSnap.empty) snap = phoneSnap.docs[0];
+        else if (!emailSnap.empty) snap = emailSnap.docs[0];
+        else {
+          alert("Patient not found");
+          return;
+        }
+      }
+
+      const data = snap.data();
+
+      setFormData({
+        name: data.name || "",
+        gender: data.gender || "",
+        dob: data.dob || "",
+        contactNumber: data.contactNumber || "",
+        email: data.email || "",
+        address: data.address || "",
+        emergencyContact: data.emergencyContact || "",
+        emergencyNumber: data.emergencyNumber || "",
+        fatherName: data.fatherName || "",
+      });
+
+      log.info("Patient loaded successfully");
+    } catch (error) {
+      log.error("Fetch error", error);
+      alert("Failed to fetch patient");
+    }
+  };
+
   if (!user || user.role !== "receptionist") {
-    return <NotLoggedIn />
+    return <NotLoggedIn />;
   }
 
   return (
@@ -184,6 +229,31 @@ const AddPatientForm = () => {
       <Navbar user={user} />
       <div className="min-h-screen bg-gradient-to-r from-blue-50 via-purple-50 to-pink-50 flex justify-center items-center py-12 px-6">
         <div className="w-full max-w-4xl bg-white rounded-xl shadow-xl p-8">
+          <div className="mb-6">
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <label className="block text-sm font-semibold text-blue-700 mb-2">
+                🔍 Search Existing Patient
+              </label>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={patientIdInput}
+                  onChange={(e) => setPatientIdInput(e.target.value)}
+                  className="flex-1 px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none"
+                  placeholder="Enter Patient ID / Phone / Email"
+                />
+
+                <button
+                  type="button"
+                  onClick={handleFetchPatient}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
+                >
+                  Search
+                </button>
+              </div>
+            </div>
+          </div>
           <h2 className="text-3xl font-semibold text-center text-gray-800 mb-6">
             Add New Patient
           </h2>
@@ -290,19 +360,6 @@ const AddPatientForm = () => {
                   onChange={handleChange}
                   className="w-full px-4 py-3 mt-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 transition"
                   placeholder="Enter address"
-                />
-              </div>
-
-              {/* Profile Picture */}
-              <div className="mb-6 md:col-span-2">
-                <label className="block text-sm font-medium text-gray-600">
-                  Profile Picture (Optional)
-                </label>
-                <input
-                  type="file"
-                  name="profilePicture"
-                  onChange={handleFileChange}
-                  className="mt-2 text-sm text-gray-500"
                 />
               </div>
 

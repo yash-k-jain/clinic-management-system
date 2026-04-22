@@ -7,9 +7,9 @@ import {
 import { useAuth } from "../context/AuthContext";
 import NotLoggedIn from "../components/NotLoggedIn";
 import LoadingSpinner from "../components/Loading";
-import moment from "moment"; // Import moment.js
+import moment from "moment";
 import Navbar from "../components/Navbar";
-import log from "../../logger"; // import your logger utility
+import log from "../../logger";
 
 const PatientsPage = () => {
   const { user, loading } = useAuth();
@@ -17,148 +17,153 @@ const PatientsPage = () => {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [search, setSearch] = useState("");
 
-  // Fetch all patients and initialize the first selected patient
+  // =========================
+  // FETCH ALL PATIENTS
+  // =========================
   useEffect(() => {
     if (!user) return;
 
-    const fetchingData = async () => {
-      const clinicId = user?.clinicId;
-      log.info("Fetching all patients for clinic");
+    const fetchData = async () => {
       try {
-        const patientsData = await fetchAllPatients(clinicId);
-        log.info(`Fetched ${patientsData.length} patients`);
-        setPatients(patientsData);
+        log.info("Fetching patients...");
 
-        if (patientsData.length > 0) {
-          const initialSelectedPatient = patientsData[0];
-          log.info("Setting initial selected patient", {
-            patientId: initialSelectedPatient.id,
-          });
-          setSelectedPatient(initialSelectedPatient);
+        const data = await fetchAllPatients(user.clinicId);
+        const filteredPatients = data.filter(
+          (patient) => patient.status === "done"
+        );
+        setPatients(filteredPatients);
+
+        if (data.length > 0) {
+          setSelectedPatient(data[0]);
         }
-      } catch (error) {
-        log.error("Error fetching patients", error);
+
+        log.info(`Patients loaded: ${data.length}`);
+      } catch (err) {
+        log.error("Error fetching patients", err);
       }
     };
 
-    fetchingData();
+    fetchData();
   }, [user]);
 
-  // Fetch "Added By" info and prescriptions every time the selected patient changes
+  // =========================
+  // FETCH ADDED BY + PRESCRIPTION
+  // =========================
   useEffect(() => {
-    if (selectedPatient) {
-      const fetchingAddedByData = async () => {
+    if (!selectedPatient?.id) return;
+
+    const fetchExtra = async () => {
+      try {
+        log.info("Fetching extra patient data...");
+
+        const clinicId = user?.clinicId;
+
+        const addedUserData = await fetchAddedUser(selectedPatient.addedBy);
+
+        let prescription = [];
         try {
-          log.info("Fetching 'Added By' user data");
-          const clinicId = user?.clinicId;
-
-          // Fetch the "Added By" user data
-          const addedUserData = await fetchAddedUser(selectedPatient?.addedBy);
-
-          // Fetch prescriptions, wrap in try-catch to handle errors
-          let prescription = null;
-          try {
-            prescription = await fetchPrescriptions(
-              selectedPatient?.id,
-              user?.uid,
-              clinicId
-            );
-            log.info("Fetched prescriptions");
-          } catch (error) {
-            log.error("Error fetching prescription", error);
-          }
-
-          setSelectedPatient((prev) => ({
-            ...prev,
-            addedBy: addedUserData,
-            prescription: prescription,
-          }));
-        } catch (error) {
-          log.error("Error fetching added user", error);
+          prescription = await fetchPrescriptions(
+            selectedPatient.id,
+            user.uid,
+            clinicId
+          );
+        } catch (err) {
+          log.error("Prescription fetch failed", err);
         }
-      };
 
-      fetchingAddedByData();
-    }
-  }, [selectedPatient, user]);
+        setSelectedPatient((prev) => ({
+          ...prev,
+          addedBy: addedUserData,
+          prescription,
+        }));
+      } catch (err) {
+        log.error("Error fetching extra data", err);
+      }
+    };
 
+    fetchExtra();
+  }, [selectedPatient?.id]); // ✅ FIXED (no infinite loop)
+
+  // =========================
+  // SEARCH FILTER
+  // =========================
   const filteredPatients = patients.filter((p) => {
-    const match = p.name.toLowerCase().includes(search.toLowerCase());
-    if (match) {
-      log.debug("Patient matches search filter");
-    }
-    return match;
+    const query = search.toLowerCase();
+
+    return (
+      p.name?.toLowerCase().includes(query) ||
+      String(p.contactNumber || "").includes(query) ||
+      p.email?.toLowerCase().includes(query)
+    );
   });
 
-  if (!user || user.role === "receptionist") return <NotLoggedIn />;
+  // =========================
+  // UI STATES
+  // =========================
   if (loading) return <LoadingSpinner />;
+  if (!user || user.role === "receptionist") return <NotLoggedIn />;
 
   return (
     <>
       <Navbar user={user} />
-      <div className="flex min-h-screen bg-gradient-to-r from-purple-300 to-blue-300 font-sans transition-all ease-in-out pt-2">
-        {/* Sidebar */}
-        <div className="w-full md:w-1/3 lg:w-1/4 bg-white shadow-xl p-6 rounded-xl border-r-4 border-purple-500 overflow-y-auto transform transition-transform duration-500">
-          <h2 className="text-3xl font-extrabold mb-6 text-purple-700 text-center">
+
+      <div className="flex min-h-screen bg-gradient-to-r from-purple-300 to-blue-300 pt-2">
+        {/* ================= SIDEBAR ================= */}
+        <div className="w-full md:w-1/3 lg:w-1/4 bg-white shadow-xl p-6 rounded-xl border-r-4 border-purple-500 overflow-y-auto">
+          <h2 className="text-3xl font-bold mb-6 text-purple-700 text-center">
             Patients
           </h2>
+
           <input
             type="text"
-            placeholder="Search by name..."
-            className="w-full mb-6 px-6 py-3 text-lg border-2 border-purple-500 rounded-lg focus:ring-2 focus:ring-purple-400 transition-all ease-in-out"
+            placeholder="Search by name, number, email..."
+            className="w-full mb-6 px-4 py-2 border rounded-lg"
             value={search}
-            onChange={(e) => {
-              log.debug("Search input changed", { value: e.target.value });
-              setSearch(e.target.value);
-            }}
+            onChange={(e) => setSearch(e.target.value)}
           />
-          <ul className="space-y-4">
+
+          <ul className="space-y-3">
             {filteredPatients.map((patient) => (
               <li
-                key={patient?.id}
-                onClick={() => {
-                  log.info("Patient selected", {
-                    patientId: patient.id,
-                    name: patient.name,
-                  });
-                  setSelectedPatient(patient);
-                }}
-                className={`p-4 rounded-xl cursor-pointer transition duration-200 ease-in-out transform hover:bg-purple-100 hover:shadow-md ${
-                  selectedPatient?.id === patient?.id
+                key={patient.id}
+                onClick={() => setSelectedPatient(patient)}
+                className={`p-4 rounded-lg cursor-pointer transition ${
+                  selectedPatient?.id === patient.id
                     ? "bg-purple-200"
-                    : "bg-gray-50"
+                    : "bg-gray-50 hover:bg-purple-100"
                 }`}
               >
-                <h3 className="font-semibold text-lg text-gray-800">
-                  {patient?.name}
-                </h3>
-                <p className="text-sm text-gray-600">Token #{patient?.token}</p>
+                <h3 className="font-semibold">{patient.name}</h3>
+                <p className="text-sm text-gray-600">Token #{patient.token}</p>
               </li>
             ))}
           </ul>
         </div>
 
-        {/* Details Pane */}
+        {/* ================= DETAILS ================= */}
         <div className="flex-1 p-8">
           {selectedPatient ? (
-            <div className="max-w-6xl mx-auto bg-white shadow-2xl rounded-xl p-8">
+            <div className="max-w-5xl mx-auto bg-white shadow-xl rounded-xl p-8">
+              {/* HEADER */}
               <div className="flex items-center gap-6 mb-8">
                 <img
-                  src={selectedPatient.profilePicture}
+                  src={selectedPatient.profilePicture || "/default-avatar.png"}
                   alt={selectedPatient.name}
-                  className="w-28 h-28 rounded-full border-4 border-purple-300 object-cover shadow-lg"
+                  className="w-24 h-24 rounded-full border object-cover"
                 />
+
                 <div>
-                  <h2 className="text-3xl font-semibold text-purple-700">
+                  <h2 className="text-2xl font-bold text-purple-700">
                     {selectedPatient.name}
                   </h2>
-                  <p className="text-lg text-gray-600">
-                    <strong>Token:</strong> #{selectedPatient.token}
+                  <p className="text-gray-600">
+                    Token #{selectedPatient.token}
                   </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-gray-700 mb-8">
+              {/* DETAILS */}
+              <div className="grid grid-cols-2 gap-4 text-gray-700">
                 <p>
                   <strong>Gender:</strong> {selectedPatient.gender}
                 </p>
@@ -172,15 +177,7 @@ const PatientsPage = () => {
                   <strong>Email:</strong> {selectedPatient.email}
                 </p>
                 <p>
-                  <strong>Emergency Contact:</strong>{" "}
-                  {selectedPatient.emergencyContact}
-                </p>
-                <p>
-                  <strong>Emergency Number:</strong>{" "}
-                  {selectedPatient.emergencyNumber}
-                </p>
-                <p>
-                  <strong>Father's Name:</strong> {selectedPatient.fatherName}
+                  <strong>Father:</strong> {selectedPatient.fatherName}
                 </p>
                 <p>
                   <strong>Status:</strong> {selectedPatient.status}
@@ -189,66 +186,52 @@ const PatientsPage = () => {
                   <strong>Address:</strong> {selectedPatient.address}
                 </p>
                 <p>
-                  <strong>Clinic ID:</strong> {selectedPatient.clinicId}
-                </p>
-                <p>
-                  <strong>Created At:</strong>{" "}
-                  {moment(selectedPatient.createdAt?.toDate()).format(
-                    "DD MMMM YYYY HH:mm:ss"
-                  )}
+                  <strong>Created:</strong>{" "}
+                  {selectedPatient.createdAt
+                    ? moment(selectedPatient.createdAt.toDate()).format(
+                        "DD MMM YYYY HH:mm"
+                      )
+                    : "--"}
                 </p>
               </div>
 
-              {/* Added By Information */}
-              <div className="border-t-2 pt-6 mt-6 text-gray-700">
-                <h3 className="text-2xl font-semibold text-purple-700">
+              {/* ADDED BY */}
+              <div className="mt-8 border-t pt-4">
+                <h3 className="text-xl font-semibold text-purple-700">
                   Added By
                 </h3>
-                <div className="mt-4">
-                  {selectedPatient.addedBy ? (
-                    <>
-                      <p>
-                        <strong>Name:</strong> {selectedPatient.addedBy.name}
-                      </p>
-                      <p>
-                        <strong>Email:</strong> {selectedPatient.addedBy.email}
-                      </p>
-                      <p>
-                        <strong>Role:</strong> {selectedPatient.addedBy.role}
-                      </p>
-                      <p>
-                        <strong>UID:</strong> {selectedPatient.addedBy.uid}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-gray-600">
-                      Loading "Added By" information...
-                    </p>
-                  )}
-                </div>
+
+                {selectedPatient.addedBy ? (
+                  <>
+                    <p>Name: {selectedPatient.addedBy.name}</p>
+                    <p>Email: {selectedPatient.addedBy.email}</p>
+                    <p>Role: {selectedPatient.addedBy.role}</p>
+                  </>
+                ) : (
+                  <p>Loading...</p>
+                )}
               </div>
 
-              {/* Prescription Information */}
-              <div className="border-t-2 pt-6 mt-6 text-gray-700">
-                <h3 className="text-2xl font-semibold text-purple-700">
+              {/* PRESCRIPTIONS */}
+              <div className="mt-8 border-t pt-4">
+                <h3 className="text-xl font-semibold text-purple-700">
                   Prescriptions
                 </h3>
-                <div className="mt-4">
-                  {selectedPatient.prescription ? (
-                    <>
-                      <p>{selectedPatient.prescription[0].prescriptionText}</p>
-                    </>
-                  ) : (
-                    <p className="text-gray-600">
-                      No prescriptions found for this patient.
+
+                {selectedPatient.prescription?.length > 0 ? (
+                  selectedPatient.prescription.map((p, i) => (
+                    <p key={i} className="mt-2">
+                      {p.prescriptionText}
                     </p>
-                  )}
-                </div>
+                  ))
+                ) : (
+                  <p>No prescriptions found</p>
+                )}
               </div>
             </div>
           ) : (
-            <p className="text-center text-gray-600 mt-20">
-              Select a patient to view details.
+            <p className="text-center mt-20">
+              Select a patient to view details
             </p>
           )}
         </div>
