@@ -214,6 +214,7 @@ const AddPatientForm = () => {
       });
 
       log.info("Patient loaded successfully");
+      setPatientIdInput("");
     } catch (error) {
       log.error("Fetch error", error);
       alert("Failed to fetch patient");
